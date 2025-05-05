@@ -12,6 +12,10 @@ from .kkp import *
 from .linkmap import *
 from .hackyelf import *
 
+
+__all__ = ['conv', 'from_map', 'from_elf']
+
+
 try:  # elftools is only an optional dependency
     import elftools
     from elftools.elf.elffile import ELFFile

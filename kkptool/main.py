@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import argparse, shutil, subprocess, sys, traceback
+import argparse, os, shutil, subprocess, sys, traceback
 from pathlib import Path
 
 from . import kkp
@@ -21,10 +21,10 @@ def get_rawkkp(args):
         inblob = f.read()
 
     rawkkp = None
-    if inblob[0:3] == b"KK64":
+    if inblob[0:4] == b"KK64":
         return kkp.parse(inblob)
     else:
-        lzmaspec = args.lzmaspec or os.getenv("LZMASPEC", shutil.which("LzmaSpec"))
+        lzmaspec = args.lzmaspec
         if lzmaspec is None:
             raise Exception("'LzmaSpec' utility not found! Please either supply a KKP file as input, or specify the --lzmaspec flag.")
 
@@ -73,7 +73,8 @@ def main():
 
     parser.add_argument("-s", "--info", help="ELF or linker map file to source symbol and debug information from",
                         default=None, type=file_path)
-    parser.add_argument("--lzmaspec", help="Path to the 'LzmaSpec' utility.", default=None, type=str)
+    parser.add_argument("--lzmaspec", help="Path to the 'LzmaSpec' utility (needed if the input specified is an LZMA file).",
+                        default=os.getenv("LZMASPEC", shutil.which("LzmaSpec")), type=str)
 
     subs = parser.add_subparsers(dest="subcommand",help="Selects the action to perform",required=True)
 

@@ -46,7 +46,7 @@ def read_strz(f) -> str:
         r = f.read(1)
         if len(r) != 1: raise IOError("Unexpected end of file")
         if r[0] == 0: break
-        ba.append(r)
+        ba.extend(r)
     return ba.decode('utf-8')
 
 def write_strz(s: str, f):
@@ -126,6 +126,6 @@ def write_file(kkp: KKP, f):
 
 def write_bytes(kkp: KKP) -> bytes:
     with BytesIO() as f:
-        write_file(kkp, f)
+        write_file_impl(kkp, f)
         return f.getvalue()
 

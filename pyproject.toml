@@ -33,4 +33,4 @@ dwarf = ["pyelftools @ git+https://github.com/eliben/pyelftools.git@3b512c4"]
 kkptool = "kkptool:main"
 
 [project.urls]
-Repository = "https://github.com/TODO/TODO"
+Repository = "https://github.com/PoroCYon/kkptool"
