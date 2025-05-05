@@ -1,0 +1,36 @@
+[project]
+name = "kkptool"
+version = "0.1"
+description = "Manipulate KKP files and add metadata from ELF or link map files"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+keywords = ["elf", "kkp", "demoscene", "intro", "compression"]
+
+authors = [
+  {name = "PoroCYon", email = "p@pcy.be"},
+]
+maintainers = [
+  {name = "PoroCYon", email = "p@pcy.be"},
+]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Other Audience",
+  "Programming Language :: Python :: 3.9",
+  "Topic :: File Formats",
+  "Topic :: Software Development :: Quality Assurance ",
+  "Topic :: Software Development :: Testing :: Acceptance",
+  "Topic :: System :: Archiving :: Compression",
+]
+
+
+[project.optional-dependencies]
+dwarf = ["pyelftools @ git+https://github.com/eliben/pyelftools.git@3b512c4"]
+
+[project.scripts]
+kkptool = "kkptool:main"
+
+[project.urls]
+Repository = "https://github.com/TODO/TODO"

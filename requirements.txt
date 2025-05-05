@@ -1,0 +1,3 @@
+#pyelftools>=0.33,<0.40
+# TODO: replace with above line once 0.33 is out
+pyelftools @ git+https://github.com/eliben/pyelftools.git@3b512c4
