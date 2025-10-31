@@ -190,7 +190,7 @@ def find_dyn(dyn: Sequence[Dyn], tag: int) -> Optional[int]:
 
 def parse_phdr32(data: _bytes, ehdr: Ehdr) -> Sequence[Phdr]:
     ps = []
-    for off in range(phoff, ehdr.phoff+ehdr.phentsz*ehdr.phnum, ehdr.phentsz):
+    for off in range(ehdr.phoff, ehdr.phoff+ehdr.phentsz*ehdr.phnum, ehdr.phentsz):
         if off + ehdr.phentsz > len(data):
             break
 
@@ -278,7 +278,7 @@ def parse_ehdr32(data: _bytes) -> Ehdr:
     etype, mach, version, entry, phoff, shoff, flags, ehsize, phentsz, phnum, \
         shentsz, shnum, shstrndx = unpack('<HHIIIIIHHHHHH', data[16:52])
 
-    return Ehdr(ident, etype, mach, entry, phoff, shoff, flags, ehsize, phentsz, phnum, shentsz, shnum, shstrndx)
+    return Ehdr(ident, etype, mach, version, entry, phoff, shoff, flags, ehsize, phentsz, phnum, shentsz, shnum, shstrndx)
 
 ### 64-bit now ################################################################
 
