@@ -13,13 +13,20 @@ _bytes = Union[bytes, bytearray]
 ELFCLASS32 = 1
 ELFCLASS64 = 2
 
+ELFDATA2LSB = 1
+ELFDATA2MSB = 2
+
 EM_386    =  3
+EM_ARM    = 40
 EM_X86_64 = 62
 
 PT_NULL    = 0
 PT_LOAD    = 1
 PT_DYNAMIC = 2
 PT_INTERP  = 3
+PT_NOTE    = 4
+PT_PHDR    = 6
+PT_GNU_STACK = 0x6474e551
 
 DT_NULL    =  0
 DT_NEEDED  =  1
@@ -41,6 +48,9 @@ DT_DEBUG   = 21
 DT_TEXTREL = 22
 DT_JMPREL  = 23
 DT_BIND_NOW= 24
+DT_FLAGS_1 = 0x6ffffffb
+
+DF_1_PIE = 0x08000000
 
 SHT_NULL     =  0
 SHT_PROGBITS =  1
@@ -104,7 +114,7 @@ class Shdr(NamedTuple):
     entsize: int
 
 class Sym(NamedTuple):
-    name: Union[str, Tuple[int, int]]
+    name: Union[str, _bytes, Tuple[int, int]]
     value: int
     size: int
     type: int
@@ -123,6 +133,11 @@ class Rela(NamedTuple):
     addend: int
 Reloc = Union[Rel, Rela]
 
+class Note(NamedTuple):
+    name: str|_bytes
+    type: int
+    desc: bytes
+
 class Ehdr(NamedTuple):
     ident   : bytes
     etype   : int
@@ -139,13 +154,23 @@ class Ehdr(NamedTuple):
     shnum   : int
     shstrndx: int
 
+    @property
     def eclass(self) -> int: return self.ident[4]
+    @property
+    def endian(self) -> int: return self.ident[5]
+    @property
+    def version(self) -> int: return self.ident[6]
+    @property
+    def osabi(self) -> int: return self.ident[7]
+    @property
+    def abiversion(self) -> int: return self.ident[8]
 
 class ElfReader(NamedTuple):
     ehdr: Callable[_bytes, Ehdr]
     phdr: Callable[[_bytes, Ehdr], Sequence[Phdr]]
     shdr: Callable[[_bytes, Ehdr], Sequence[Shdr]]
     dyn: Callable[[_bytes, Phdr], Sequence[Dyn]]
+    note: Callable[[_bytes, Phdr], Sequence[Note]]
     sym: Callable[[_bytes, int, Optional[int], int, int, Optional[int]], Sequence[Sym]]
     reloc: Callable[[_bytes, int, Optional[int], int, Optional[Sequence[Sym]], bool], Sequence[Reloc]]
 
@@ -166,6 +191,7 @@ class ELF(NamedTuple):
     dynsym: Sequence[Sym]
     dynrel: Sequence[Reloc]
     pltrel: Sequence[Reloc]
+    notes : Sequence[Note]
 
     # offline linking view
     shdrs : Sequence[Shdr]
@@ -174,12 +200,15 @@ class ELF(NamedTuple):
 
     bits  : int
 
-def readstr(data: _bytes, off: int) -> str:
+def readstr(data: _bytes, off: int) -> str|_bytes:
     strb = bytearray()
     while data[off] != 0 and off < len(data):
         strb.append(data[off])
         off = off + 1
-    return strb.decode('utf-8')
+    try:
+        return strb.decode('utf-8')
+    except:
+        return strb
 
 def find_dyn(dyn: Sequence[Dyn], tag: int) -> Optional[int]:
     for x in dyn:
@@ -273,6 +302,35 @@ def parse_sym32(data: _bytes, symoff: int, symsz: Optional[int], symentsz: int, 
         ss.append(s)
     return ss#sorted(ss, key=lambda x:x.value)
 
+def parse_note32(data: bytes, nphdr: Phdr) -> Sequence[Note]:
+    ret = []
+
+    assert nphdr.ptype == PT_NOTE
+
+    off = nphdr.off
+    end = off + nphdr.filesz
+
+    while off < end:
+        namesz, descsz, typ = unpack('<III', data[off:off+3*4])
+        off += 3*4
+        name = readstr(data, off)
+        off += namesz
+
+        # realign here; typically alignment is 4 bytes
+        if (off % nphdr.align) != 0:
+            off += nphdr.align - (off % nphdr.align)
+        desc = data[off:off+descsz]
+
+        off += descsz
+
+        # realign here; typically alignment is 4 bytes
+        if (off % nphdr.align) != 0:
+            off += nphdr.align - (off % nphdr.align)
+
+        ret.append(Note(name, typ, desc))
+
+    return ret
+
 def parse_ehdr32(data: _bytes) -> Ehdr:
     ident = data[:16]
     etype, mach, version, entry, phoff, shoff, flags, ehsize, phentsz, phnum, \
@@ -365,6 +423,9 @@ def parse_sym64(data: _bytes, symoff: int, symsz: Optional[int], symentsz: int, 
         ss.append(s)
     return ss#sorted(ss, key=lambda x:x.value)
 
+# format is same as note32, so eh
+parse_note64 = parse_note32
+
 def parse_ehdr64(data: _bytes) -> Ehdr:
     ident   = data[:16]
     etype, mach, version, entry, phoff, shoff, flags, ehsize, phentsz, phnum, \
@@ -375,9 +436,9 @@ def parse_ehdr64(data: _bytes) -> Ehdr:
 ### higher-level parsing ######################################################
 
 _READERS = {
-    32: ElfReader(parse_ehdr32, parse_phdr32, parse_shdr32, parse_dyn32,
+    32: ElfReader(parse_ehdr32, parse_phdr32, parse_shdr32, parse_dyn32, parse_note32,
                   parse_sym32, parse_reloc32),
-    64: ElfReader(parse_ehdr64, parse_phdr64, parse_shdr64, parse_dyn64,
+    64: ElfReader(parse_ehdr64, parse_phdr64, parse_shdr64, parse_dyn64, parse_note64,
                   parse_sym64, parse_reloc64)
 }
 
@@ -407,6 +468,10 @@ def parse(data) -> ELF:
             raise Exception("bad E_CLASS %d and e_machine %d (0x%x)" % (ecls, emch, emch))
     assert bits is not None
 
+    # skip x86es for this check, for "reasons"
+    if emch not in (EM_386, EM_X86_64) and data[5] == ELFDATA2MSB:
+        raise Exception("Sorry, big-endian ELF files not supported")
+
     reader = _READERS[bits]
     ehdr = reader.ehdr(data)
 
@@ -414,11 +479,13 @@ def parse(data) -> ELF:
 
     phdrs = [] if ehdr.phentsz == 0 else reader.phdr(data, ehdr)
     dyn   = None
+    notes = []
 
     for p in phdrs:
-        if p.ptype == PT_DYNAMIC:
+        if p.ptype == PT_DYNAMIC and dyn is None:
             dyn = reader.dyn(data, p)
-            break
+        elif p.ptype == PT_NOTE:
+            notes += reader.note(data, p)
 
     # symtab, syment, strtab, strsz ---> can't derive dynsym size!
     # RELA, RELASZ, RELAENT
@@ -473,11 +540,11 @@ def parse(data) -> ELF:
             relocs[s.name] = reader.reloc_shdr(data, s, symtabs.get(None if symt is None else symt.name))
 
     return ELF(data, ehdr,
-               phdrs, dyn, dynsym, dynrel, pltrel,
+               phdrs, dyn, dynsym, dynrel, pltrel, notes,
                shdrs, symtabs, relocs,
                bits)
 
 __all__ = [ 'ELF',  #'parse', 'find_dyn',
-            'Phdr', 'Dyn', 'Shdr', 'Sym', 'Rel', 'Rela', 'Ehdr', 'Reloc',
+            'Phdr', 'Dyn', 'Shdr', 'Sym', 'Rel', 'Rela', 'Ehdr', 'Reloc', 'Note',
             *(s for s in locals().keys() if s.upper() == s and s[0] != '_')]
 
